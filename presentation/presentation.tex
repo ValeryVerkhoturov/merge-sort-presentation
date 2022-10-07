@@ -12,8 +12,34 @@
 \usepackage{pgfplots}
 \usepackage{tikzducks}
 \usepackage{comment}
-\usepackage{listings}
 \usepackage{amsmath}
+
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\lstdefinestyle{mystyle}{
+	backgroundcolor=\color{backcolour},   
+	commentstyle=\color{codegreen},
+	keywordstyle=\color{magenta},
+	numberstyle=\tiny\color{codegray},
+	stringstyle=\color{codepurple},
+	basicstyle=\ttfamily\footnotesize,
+	breakatwhitespace=false,         
+	breaklines=true,                 
+	captionpos=b,                    
+	keepspaces=true,                 
+	numbers=left,                    
+	numbersep=5pt,                  
+	showspaces=false,                
+	showstringspaces=false,
+	showtabs=false,                  
+	tabsize=2
+}
+\lstset{style=mystyle}
 
 \title{Алгоритмы параллельных вычислений. Сортировка слиянием (Algorithm M)}
 \author{В.\,С.\,Верхотуров}
@@ -183,8 +209,7 @@ def merge(arrays: list[list[Number]]) -> list[Number]:
 	x, y = arrays
 	index_x = index_y = 0
 	out = []
-	while index_x < len(x) and \
-			index_y < len(y):
+	while index_x < len(x) and index_y < len(y):
 		if x[index_x] < y[index_y]:
 			out.append(x[index_x])
 			index_x += 1
@@ -228,7 +253,7 @@ test_merge_sort()
 	\begin{frame}[fragile]
 		\frametitle{Реализация однопоточного алгоритма на CPython. Часть~2}
 		\begin{lstlisting}[language=Python]		
-def merge_sort(arr : list[Number]) -> list[Number]:
+def merge_sort(arr : list[Number]) -> list[Number]: # T^{merge}(n)
 	if len(arr) <= 1:
 		return arr
 	if len(arr) == 2:
@@ -237,7 +262,7 @@ def merge_sort(arr : list[Number]) -> list[Number]:
 			else [arr[1], arr[0]]
 	mid = len(arr) // 2
 	return merge(merge_sort(arr[:mid]), 
-		     merge_sort(arr[mid:]))
+		     merge_sort(arr[mid:])) # 2 * T^{sort}(n / 2)
 		\end{lstlisting}
 	
 	\end{frame}
@@ -287,7 +312,7 @@ def merge(arrays: list[list[Number]]) \
 	
 		Временная сложность:
 		\begin{multline}
-			T^{sort}(n)=2T^{sort}\left(\frac{n}{2}\right)+T^{merge}(n)=\\=2T^{sort}\left(\frac{n}{2}\right)+\Theta(\log^2{}{n})
+			T^{sort}(n)=2T^{sort}\left(\frac{n}{2}\right)+T^{merge}(n)=\\=2T^{sort}\left(\frac{n}{2}\right)+\Theta(n\log{}{n})
 		\end{multline}
 	\end{frame}
 	
@@ -300,7 +325,7 @@ def merge(arrays: list[list[Number]]) \
 	\begin{frame}
 		
 		\begin{tikzpicture}[scale=1.2]
-			\begin{axis}[legend pos = south east, axis lines = left, grid = both, xlabel = $n$, ylabel = {$O(n)$}, ymax=100, xmax=100]
+			\begin{axis}[legend pos = north east, axis lines = left, grid = both, xlabel = $n$, ylabel = {$O(n)$}, ymax=100, xmax=100]
 				\addplot [domain=0:100, samples=100, color=red]{x*log2(x)};
 				\addlegendentry{$n\log{}{n}$};
 				
@@ -309,6 +334,9 @@ def merge(arrays: list[list[Number]]) \
 				
 				\addplot [domain=0:100, samples=100, color=blue]{x^2};
 				\addlegendentry{$n^2$};
+				
+				\addplot [domain=0:100, samples=100, color=purple]{log2(x)};
+				\addlegendentry{$\log{}{n}$};
 			\end{axis}
 		\end{tikzpicture}
 	\end{frame}
@@ -341,22 +369,66 @@ def merge(arrays: list[list[Number]]) \
 import multiprocessing
 import math
 
-
-def parallel_merge_sort(arr: list[Number]) -> list[Number]:
+def parallel_merge_sort(arr: list[Number]) \
+                          -> list[Number]:
 	processes = multiprocessing.cpu_count()
-	pool = multiprocessing.Pool(processes = processes)
-	size = math.ceil(len(arr) / processes)
-	arr = [arr[i * size:(i + 1) * size] 
-		for i in range(processes)]
-	arr = pool.map(merge_sort, arr)
-	while len(arr) > 1:
-		extra = arr.pop() if len(arr) % 2 == 1 
-				else None
-		arr = [[arr[i], arr[i + 1]] 
-			for i in range(0, len(arr), 2)]
-		arr = pool.map(merge, arr) + \
-			([extra] if extra else [])
+	with multiprocessing.Pool(processes = processes) \
+                                            as pool:
+		size = math.ceil(len(arr) / processes)
+		arr = [arr[i * size:(i + 1) * size] 
+					 for i in range(processes)]
+		arr = pool.map(merge_sort, arr)
+		while len(arr) > 1:
+			extra = arr.pop() if len(arr) % 2 == 1 else None
+			arr = [[arr[i], arr[i + 1]] 
+			        for i in range(0, len(arr), 2)]
+			arr = pool.map(merge, arr) + \
+			      ([extra] if extra else [])
 	return arr[0]
+		\end{lstlisting}
+	\end{frame}
+
+	\begin{frame}[fragile]
+		\frametitle{Многопроцессная реализация алгоритма слияния. Часть~1}
+		
+		\begin{lstlisting}[language=Python]		
+# input arr = [38, 25, 77, 45, 46, 64, 88, 76, 97, 35]
+
+processes = multiprocessing.cpu_count() # processes=8
+pool = multiprocessing.Pool(processes = processes)
+size = math.ceil(len(arr) / processes) # size = 2
+arr = [arr[i * size:(i + 1) * size] 
+       for i in range(processes)]
+# arr = [[38, 25], [77, 45], [46, 64], [88, 76], 
+#        [97, 35], [], [], []]
+arr = pool.map(merge_sort, arr) # T^{sort}(n / 2)
+# arr = [[25, 38], [45, 77], [46, 64], [76, 88], 
+#        [35, 97], [], [], []]
+		\end{lstlisting}
+	\end{frame}
+
+	\begin{frame}[fragile]
+		\frametitle{Многопроцессная реализация алгоритма слияния. Часть~2}
+		
+		\begin{lstlisting}[language=Python]	
+# arr = [[25, 38], [45, 77], [46, 64], [76, 88], 
+#        [35, 97], [], [], []]
+while len(arr) > 1:
+	extra = arr.pop() if len(arr) % 2 == 1 else None
+	arr = [[arr[i], arr[i + 1]] 
+	        for i in range(0, len(arr), 2)]
+	# arr = [[[25, 38], [47, 77]], [[46, 64], [76, 88]], 
+	#        [[35, 97], []], [[], []]]
+	arr = pool.map(merge, arr) + \
+	      ([extra] if extra else []) # T^{merge}(n)
+	# Iteration 1 out: [[25, 38, 45, 77], 
+	#                   [46, 64, 76, 88], 
+	#                   [35, 97], []]
+	# Iteration 2 out: 
+	# [[25, 38, 45, 46, 64, 76, 77, 88], [35, 97]]
+	# Iteration 3 out: 
+	# [[25, 35, 38, 45, 46, 64, 76, 77, 88, 97]]
+return arr[0]
 		\end{lstlisting}
 	\end{frame}
 
@@ -365,7 +437,7 @@ def parallel_merge_sort(arr: list[Number]) -> list[Number]:
 	\begin{frame}
 		\frametitle{Временная сложность}
 		\begin{equation}
-			T^{sort}(n)=T^{sort}\left(\frac{n}{2}\right)+T^{merge}(n)=T^{sort}\left(\frac{n}{2}\right)+\Theta(\log^2{}{n})
+			T^{sort}(n)=T^{sort}\left(\frac{n}{2}\right)+T^{merge}(n)=T^{sort}\left(\frac{n}{2}\right)+\Theta(\log{}{n})
 		\end{equation}
 	\end{frame}
 
